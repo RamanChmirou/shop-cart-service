@@ -1,3 +1,32 @@
+server:
+  port: 8082
+
 spring:
   application:
-    name: cart
+    name: cart-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cart_db
+    username: shop
+    password: shop
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+clients:
+  product-service:
+    url: http://localhost:8081
+
+logging:
+  level:
+    root: INFO
+    com.kanapa4.shop.cart: DEBUG
