@@ -14,6 +14,18 @@ spring:
       ddl-auto: validate
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+    circuitbreaker:
+      resilience4j:
+        disable-time-limiter: true
 
 springdoc:
   api-docs:
@@ -30,3 +42,14 @@ logging:
   level:
     root: INFO
     com.kanapa4.shop.cart: DEBUG
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        ignore-exceptions:
+          - com.kanapa4.shop.cart.exception.CartException
