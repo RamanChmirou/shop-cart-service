@@ -1,13 +1,8 @@
 package com.kanapa4.shop.cart.service;
 
 import com.kanapa4.shop.cart.client.ProductClient;
-import com.kanapa4.shop.cart.dto.CartResponse;
-import com.kanapa4.shop.cart.dto.PriceQuoteRequest;
-import com.kanapa4.shop.cart.dto.PriceQuoteResponse;
-import com.kanapa4.shop.cart.exception.CartItemNotFoundException;
-import com.kanapa4.shop.cart.exception.CurrencyMismatchException;
-import com.kanapa4.shop.cart.exception.InvalidQuantityException;
-import com.kanapa4.shop.cart.exception.ProductNotFoundException;
+import com.kanapa4.shop.cart.dto.*;
+import com.kanapa4.shop.cart.exception.*;
 import com.kanapa4.shop.cart.mapper.CartMapper;
 import com.kanapa4.shop.cart.model.Cart;
 import com.kanapa4.shop.cart.model.CartStatus;
@@ -18,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -31,11 +27,10 @@ import java.util.UUID;
 import static com.kanapa4.shop.cart.testdata.CartFixtures.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForClassTypes.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class CartServiceTest {
@@ -105,9 +100,9 @@ class CartServiceTest {
         CartResponse response = cartService.addItem(USER_ID, addLaptopRequest(2));
 
         assertThat(response.items()).hasSize(1);
-        assertThat(response.items().get(0).productName()).isEqualTo(PRODUCT_NAME);
-        assertThat(response.items().get(0).unitPrice()).isEqualTo(laptopPrice());
-        assertThat(response.items().get(0).selectedOptions()).hasSize(2);
+        assertThat(response.items().getFirst().productName()).isEqualTo(PRODUCT_NAME);
+        assertThat(response.items().getFirst().unitPrice()).isEqualTo(laptopPrice());
+        assertThat(response.items().getFirst().selectedOptions()).hasSize(2);
         assertThat(response.totalAmount()).isEqualByComparingTo("10398.00");
         verify(cartRepository).save(any(Cart.class));
     }
@@ -122,7 +117,7 @@ class CartServiceTest {
         CartResponse response = cartService.addItem(USER_ID, addLaptopRequest(2));
 
         assertThat(response.items()).hasSize(1);
-        assertThat(response.items().get(0).quantity()).isEqualTo(3);
+        assertThat(response.items().getFirst().quantity()).isEqualTo(3);
     }
 
     @Test
@@ -135,7 +130,7 @@ class CartServiceTest {
 
         CartResponse response = cartService.addItem(USER_ID, addLaptopRequest(1));
 
-        assertThat(response.items().get(0).unitPrice()).isEqualTo(newPrice);
+        assertThat(response.items().getFirst().unitPrice()).isEqualTo(newPrice);
         assertThat(response.totalAmount()).isEqualByComparingTo("10798.00");
     }
 
@@ -192,7 +187,7 @@ class CartServiceTest {
 
         CartResponse response = cartService.updateQuantity(USER_ID, ITEM_ID, 5);
 
-        assertThat(response.items().get(0).quantity()).isEqualTo(5);
+        assertThat(response.items().getFirst().quantity()).isEqualTo(5);
         assertThat(response.totalAmount()).isEqualByComparingTo("25995.00");
     }
 
@@ -253,5 +248,165 @@ class CartServiceTest {
         cartService.clear(USER_ID);
 
         verify(cartRepository, never()).save(any());
+    }
+
+    private void givenBatchQuotes(PriceQuoteResponse... quotes) {
+        when(productClient.getPriceQuotes(any(BatchPriceQuoteRequest.class)))
+                .thenReturn(new BatchPriceQuoteResponse(List.of(quotes)));
+    }
+
+    private Price pln(String amount) {
+        return new Price(new BigDecimal(amount), "PLN", VatRate.VAT_23);
+    }
+
+    private PriceQuoteResponse laptopQuoteWithPrice(Price price) {
+        return new PriceQuoteResponse(PRODUCT_ID, PRODUCT_NAME, price, List.of(processorI7(), ram32()));
+    }
+
+    private PriceQuoteResponse phoneQuote(Price price) {
+        return new PriceQuoteResponse(PHONE_ID, "Phone X", price, List.of());
+    }
+
+    @Test
+    @DisplayName("reprice: prices unchanged, nothing is reported")
+    void reprice_PricesUnchanged_ReturnsNoChanges() {
+        givenActiveCart(cartWith(laptopItem(2)));
+        givenBatchQuotes(laptopQuote());
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isFalse();
+        assertThat(response.changes()).isEmpty();
+        assertThat(response.cart().totalAmount()).isEqualByComparingTo("10398.00");
+    }
+
+    @Test
+    @DisplayName("reprice: a changed catalog price updates the snapshot and is reported")
+    void reprice_PriceChanged_UpdatesSnapshotAndReportsChange() {
+        Cart cart = cartWith(laptopItem(2));
+        givenActiveCart(cart);
+        Price newPrice = pln("5399.00");
+        givenBatchQuotes(laptopQuoteWithPrice(newPrice));
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isTrue();
+        assertThat(response.changes()).hasSize(1);
+        assertThat(response.changes().getFirst().itemId()).isEqualTo(ITEM_ID);
+        assertThat(response.changes().getFirst().oldUnitPrice()).isEqualTo(laptopPrice());
+        assertThat(response.changes().getFirst().newUnitPrice()).isEqualTo(newPrice);
+        assertThat(cart.getItems().getFirst().getUnitPrice()).isEqualTo(newPrice);
+        assertThat(response.cart().totalAmount()).isEqualByComparingTo("10798.00");
+    }
+
+    @Test
+    @DisplayName("reprice: the same price with another scale is not a change")
+    void reprice_SamePriceDifferentScale_IsNotReportedAsChange() {
+        givenActiveCart(cartWith(laptopItem(1)));
+        givenBatchQuotes(laptopQuoteWithPrice(pln("5199.0")));
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isFalse();
+        assertThat(response.changes()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("reprice: a renamed product refreshes the name without reporting a price change")
+    void reprice_ProductRenamed_UpdatesNameOnly() {
+        givenActiveCart(cartWith(laptopItem(1)));
+        givenBatchQuotes(new PriceQuoteResponse(PRODUCT_ID, "Laptop Pro 15 (2026)", laptopPrice(),
+                List.of(processorI7(), ram32())));
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isFalse();
+        assertThat(response.cart().items().getFirst().productName()).isEqualTo("Laptop Pro 15 (2026)");
+    }
+
+    @Test
+    @DisplayName("reprice: one batch request with all items in cart order")
+    void reprice_TwoItems_SendsOneBatchRequestInCartOrder() {
+        givenActiveCart(cartWith(laptopItem(1), phoneItem(1)));
+        givenBatchQuotes(laptopQuote(), phoneQuote(pln("2499.00")));
+
+        cartService.reprice(USER_ID);
+
+        ArgumentCaptor<BatchPriceQuoteRequest> captor = ArgumentCaptor.forClass(BatchPriceQuoteRequest.class);
+        verify(productClient).getPriceQuotes(captor.capture());
+        List<BatchPriceQuoteItemRequest> items = captor.getValue().items();
+        assertThat(items).extracting(BatchPriceQuoteItemRequest::productId)
+                .containsExactly(PRODUCT_ID, PHONE_ID);
+        assertThat(items.getFirst().selectedOptions())
+                .extracting(SelectedOptionRequest::groupCode, SelectedOptionRequest::valueCode)
+                .containsExactly(tuple("PROCESSOR", "I7"), tuple("RAM", "RAM_32"));
+    }
+
+    @Test
+    @DisplayName("reprice: only the item with a new price is reported")
+    void reprice_TwoItemsOneChanged_ReportsOnlyChangedItem() {
+        givenActiveCart(cartWith(laptopItem(1), phoneItem(1)));
+        givenBatchQuotes(laptopQuote(), phoneQuote(pln("2599.00")));
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isTrue();
+        assertThat(response.changes()).hasSize(1);
+        assertThat(response.changes().getFirst().itemId()).isEqualTo(PHONE_ITEM_ID);
+        assertThat(response.changes().getFirst().productName()).isEqualTo("Phone X");
+        assertThat(response.changes().getFirst().oldUnitPrice().amount()).isEqualByComparingTo("2499.00");
+        assertThat(response.changes().getFirst().newUnitPrice().amount()).isEqualByComparingTo("2599.00");
+        assertThat(response.cart().totalAmount()).isEqualByComparingTo("7798.00");
+    }
+
+    @Test
+    @DisplayName("reprice: an empty cart does not call product-service")
+    void reprice_EmptyCart_DoesNotCallProductService() {
+        givenActiveCart(cartWith());
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isFalse();
+        assertThat(response.cart().items()).isEmpty();
+        verifyNoInteractions(productClient);
+    }
+
+    @Test
+    @DisplayName("reprice: a user without a cart gets an empty cart and nothing is saved")
+    void reprice_NoCart_ReturnsEmptyCartWithoutSaving() {
+        givenNoCart();
+
+        RepriceResponse response = cartService.reprice(USER_ID);
+
+        assertThat(response.changed()).isFalse();
+        assertThat(response.cart().items()).isEmpty();
+        verifyNoInteractions(productClient);
+        verify(cartRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("reprice: a product that no longer exists is propagated and the old price stays")
+    void reprice_ProductNotFound_PropagatesAndKeepsOldPrice() {
+        Cart cart = cartWith(laptopItem(1));
+        givenActiveCart(cart);
+        when(productClient.getPriceQuotes(any(BatchPriceQuoteRequest.class)))
+                .thenThrow(new ProductNotFoundException("Product not found"));
+
+        assertThatThrownBy(() -> cartService.reprice(USER_ID))
+                .isInstanceOf(ProductNotFoundException.class);
+        assertThat(cart.getItems().getFirst().getUnitPrice()).isEqualTo(laptopPrice());
+    }
+
+    @Test
+    @DisplayName("reprice: product-service down is propagated and the old price stays")
+    void reprice_ProductServiceUnavailable_PropagatesAndKeepsOldPrice() {
+        Cart cart = cartWith(laptopItem(1));
+        givenActiveCart(cart);
+        when(productClient.getPriceQuotes(any(BatchPriceQuoteRequest.class)))
+                .thenThrow(new ServiceUnavailableException("product-service"));
+
+        assertThatThrownBy(() -> cartService.reprice(USER_ID))
+                .isInstanceOf(ServiceUnavailableException.class);
+        assertThat(cart.getItems().getFirst().getUnitPrice()).isEqualTo(laptopPrice());
     }
 }

@@ -21,9 +21,8 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -64,6 +63,23 @@ class CartApiIntegrationTest {
               ]
             }
             """;
+    private static final String BATCH_PATH = "/products/price-quotes";
+
+    private static final String BATCH_RESPONSE = """
+        {
+          "quotes": [
+            {
+              "productId": "11111111-0000-0000-0000-000000000001",
+              "productName": "Laptop Pro 15",
+              "unitPrice": { "amount": %s, "currency": "PLN", "vatRate": "VAT_23" },
+              "selectedOptions": [
+                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
+                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
+              ]
+            }
+          ]
+        }
+        """;
 
     @Autowired
     private MockMvc mockMvc;
@@ -113,6 +129,24 @@ class CartApiIntegrationTest {
     private int countCarts() {
         return jdbcTemplate.queryForObject(
                 "select count(*) from carts where user_id = ?", Integer.class, userId);
+    }
+
+    private void givenBatchQuoteWithPrice(String amount) {
+        productService.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(BATCH_RESPONSE.formatted(amount))));
+    }
+
+    private BigDecimal storedUnitPrice() {
+        return jdbcTemplate.queryForObject(
+                "select i.unit_price from cart_items i join carts c on c.id = i.cart_id where c.user_id = ?",
+                BigDecimal.class, userId);
+    }
+
+    private ResultActions reprice() throws Exception {
+        return mockMvc.perform(post("/carts/{userId}/reprice", userId));
     }
 
     @Test
@@ -274,5 +308,90 @@ class CartApiIntegrationTest {
                 .andExpect(jsonPath("$.items[0].quantity").value(1));
 
         assertThat(countCarts()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("reprice: a new catalog price is stored in the database and reported once")
+    void reprice_PriceChangedInCatalog_UpdatesStoredSnapshot() throws Exception {
+        addLaptopAndGetItemId(2);
+        givenBatchQuoteWithPrice("5399.00");
+
+        reprice()
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(true))
+                .andExpect(jsonPath("$.changes.length()").value(1))
+                .andExpect(jsonPath("$.changes[0].oldUnitPrice.amount").value(5199.0))
+                .andExpect(jsonPath("$.changes[0].newUnitPrice.amount").value(5399.0))
+                .andExpect(jsonPath("$.cart.totalAmount").value(10798.0));
+
+        assertThat(storedUnitPrice()).isEqualByComparingTo("5399.00");
+        mockMvc.perform(get("/carts/{userId}", userId))
+                .andExpect(jsonPath("$.items[0].unitPrice.amount").value(5399.0))
+                .andExpect(jsonPath("$.totalAmount").value(10798.0));
+
+        reprice()
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(false))
+                .andExpect(jsonPath("$.changes").isEmpty());
+    }
+
+    @Test
+    @DisplayName("reprice: unchanged prices give no changes and one batch request")
+    void reprice_PricesUnchanged_ReturnsNoChanges() throws Exception {
+        addLaptopAndGetItemId(1);
+        givenBatchQuoteWithPrice("5199.00");
+
+        reprice()
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(false))
+                .andExpect(jsonPath("$.changes").isEmpty())
+                .andExpect(jsonPath("$.cart.items.length()").value(1));
+
+        productService.verify(1, postRequestedFor(urlPathEqualTo(BATCH_PATH)));
+        assertThat(storedUnitPrice()).isEqualByComparingTo("5199.00");
+    }
+
+    @Test
+    @DisplayName("reprice: a user without a cart gets an empty cart, product-service is not called")
+    void reprice_NewUser_ReturnsEmptyCartWithoutCallingProductService() throws Exception {
+        reprice()
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(false))
+                .andExpect(jsonPath("$.cart.items.length()").value(0));
+
+        productService.verify(0, postRequestedFor(urlPathEqualTo(BATCH_PATH)));
+        assertThat(countCarts()).isZero();
+    }
+
+    @Test
+    @DisplayName("reprice: a product that no longer exists gives 404 and the old price stays")
+    void reprice_ProductGone_Return404AndKeepsOldPrice() throws Exception {
+        addLaptopAndGetItemId(1);
+        productService.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"detail\":\"Product not found: " + PRODUCT_ID + "\",\"status\":404}")));
+
+        reprice()
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Product not found: " + PRODUCT_ID));
+
+        assertThat(storedUnitPrice()).isEqualByComparingTo("5199.00");
+    }
+
+    @Test
+    @DisplayName("reprice: product-service down gives 503 after retries and the old price stays")
+    void reprice_ProductServiceDown_Return503AndKeepsOldPrice() throws Exception {
+        addLaptopAndGetItemId(1);
+        productService.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse().withStatus(503)));
+
+        reprice()
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value("product-service is currently unavailable"));
+
+        productService.verify(3, postRequestedFor(urlPathEqualTo(BATCH_PATH)));
+        assertThat(storedUnitPrice()).isEqualByComparingTo("5199.00");
     }
 }

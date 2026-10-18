@@ -1,10 +1,7 @@
 package com.kanapa4.shop.cart.service;
 
 import com.kanapa4.shop.cart.client.ProductClient;
-import com.kanapa4.shop.cart.dto.AddCartItemRequest;
-import com.kanapa4.shop.cart.dto.CartResponse;
-import com.kanapa4.shop.cart.dto.PriceQuoteRequest;
-import com.kanapa4.shop.cart.dto.PriceQuoteResponse;
+import com.kanapa4.shop.cart.dto.*;
 import com.kanapa4.shop.cart.exception.CartItemNotFoundException;
 import com.kanapa4.shop.cart.exception.CurrencyMismatchException;
 import com.kanapa4.shop.cart.exception.InvalidQuantityException;
@@ -25,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -73,6 +71,16 @@ public class CartService {
         log.info("Clearing cart of user {}", userId);
         cartRepository.findByUserIdAndStatus(userId, CartStatus.ACTIVE)
                 .ifPresent(cart -> cart.getItems().clear());
+    }
+
+    @Transactional
+    public RepriceResponse reprice(UUID userId) {
+        log.info("Repricing cart of user {}", userId);
+        Cart cart = getActiveCartOrNew(userId);
+        List<PriceQuoteResponse> quotes = requestQuotes(cart.getItems());
+        List<PriceChange> changes = applyQuotes(cart.getItems(), quotes);
+        log.info("Cart of user {} repriced, {} price changes", userId, changes.size());
+        return new RepriceResponse(cartMapper.toResponse(cart), !changes.isEmpty(), changes);
     }
 
     private PriceQuoteResponse requestQuote(AddCartItemRequest request) {
@@ -142,5 +150,38 @@ public class CartService {
         }
         item.setQuantity(newQuantity);
         item.setUnitPrice(quote.unitPrice());
+    }
+
+    private List<PriceQuoteResponse> requestQuotes(List<CartItem> items) {
+        if (items.isEmpty()) {
+            return List.of();
+        }
+        List<BatchPriceQuoteItemRequest> requested = items.stream()
+                .map(cartMapper::toQuoteItem)
+                .toList();
+        return productClient.getPriceQuotes(new BatchPriceQuoteRequest(requested)).quotes();
+    }
+
+    private List<PriceChange> applyQuotes(List<CartItem> items, List<PriceQuoteResponse> quotes) {
+        return IntStream.range(0, items.size())
+                .mapToObj(index -> applyQuote(items.get(index), quotes.get(index)))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private Optional<PriceChange> applyQuote(CartItem item, PriceQuoteResponse quote) {
+        Price oldPrice = item.getUnitPrice();
+        item.setProductName(quote.productName());
+        if (samePrice(oldPrice, quote.unitPrice())) {
+            return Optional.empty();
+        }
+        item.setUnitPrice(quote.unitPrice());
+        return Optional.of(cartMapper.toPriceChange(item, oldPrice));
+    }
+
+    private boolean samePrice(Price first, Price second) {
+        return first.amount().compareTo(second.amount()) == 0
+                && first.currency().equals(second.currency())
+                && first.vatRate() == second.vatRate();
     }
 }

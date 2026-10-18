@@ -21,6 +21,8 @@ public final class CartFixtures {
     public static final UUID ITEM_ID = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000001");
     public static final UUID PRODUCT_ID = UUID.fromString("11111111-0000-0000-0000-000000000001");
     public static final String PRODUCT_NAME = "Laptop Pro 15";
+    public static final UUID PHONE_ITEM_ID = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002");
+    public static final UUID PHONE_ID = UUID.fromString("22222222-0000-0000-0000-000000000001");
 
     private CartFixtures() {
     }
@@ -56,6 +58,17 @@ public final class CartFixtures {
         item.setUnitPrice(laptopPrice());
         item.setQuantity(quantity);
         item.setSelectedOptions(new ArrayList<>(List.of(processorI7(), ram32())));
+        return item;
+    }
+
+    public static CartItem phoneItem(int quantity) {
+        CartItem item = new CartItem();
+        item.setId(PHONE_ITEM_ID);
+        item.setProductId(PHONE_ID);
+        item.setProductName("Phone X");
+        item.setUnitPrice(new Price(new BigDecimal("2499.00"), "PLN", VatRate.VAT_23));
+        item.setQuantity(quantity);
+        item.setSelectedOptions(new ArrayList<>());
         return item;
     }
 
