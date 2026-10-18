@@ -1,11 +1,9 @@
 package com.kanapa4.shop.cart.mapper;
 
-import com.kanapa4.shop.cart.dto.AddCartItemRequest;
-import com.kanapa4.shop.cart.dto.CartItemResponse;
-import com.kanapa4.shop.cart.dto.CartResponse;
-import com.kanapa4.shop.cart.dto.PriceQuoteResponse;
+import com.kanapa4.shop.cart.dto.*;
 import com.kanapa4.shop.cart.model.Cart;
 import com.kanapa4.shop.cart.model.CartItem;
+import com.kanapa4.shop.cart.model.Price;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -51,4 +49,13 @@ public interface CartMapper {
     @Mapping(target = "unitPrice", source = "quote.unitPrice")
     @Mapping(target = "selectedOptions", source = "quote.selectedOptions")
     CartItem toItem(AddCartItemRequest request, PriceQuoteResponse quote);
+
+    BatchPriceQuoteItemRequest toQuoteItem(CartItem item);
+
+    @Mapping(target = "itemId", source = "item.id")
+    @Mapping(target = "productId", source = "item.productId")
+    @Mapping(target = "productName", source = "item.productName")
+    @Mapping(target = "oldUnitPrice", source = "oldPrice")
+    @Mapping(target = "newUnitPrice", source = "item.unitPrice")
+    PriceChange toPriceChange(CartItem item, Price oldPrice);
 }

@@ -4,9 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.kanapa4.shop.cart.TestcontainersConfiguration;
-import com.kanapa4.shop.cart.dto.PriceQuoteRequest;
-import com.kanapa4.shop.cart.dto.PriceQuoteResponse;
-import com.kanapa4.shop.cart.dto.SelectedOptionRequest;
+import com.kanapa4.shop.cart.dto.*;
 import com.kanapa4.shop.cart.exception.InvalidProductSelectionException;
 import com.kanapa4.shop.cart.exception.ProductNotFoundException;
 import com.kanapa4.shop.cart.exception.ServiceUnavailableException;
@@ -27,6 +25,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.kanapa4.shop.cart.testdata.CartFixtures.PHONE_ID;
 import static com.kanapa4.shop.cart.testdata.CartFixtures.PRODUCT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,7 +48,35 @@ class ProductClientTest {
               ]
             }
             """;
+    private static final String BATCH_PATH = "/products/price-quotes";
 
+    private static final String BATCH_RESPONSE = """
+        {
+          "quotes": [
+            {
+              "productId": "11111111-0000-0000-0000-000000000001",
+              "productName": "Laptop Pro 15",
+              "unitPrice": { "amount": 5199.00, "currency": "PLN", "vatRate": "VAT_23" },
+              "selectedOptions": [
+                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
+                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
+              ]
+            },
+            {
+              "productId": "22222222-0000-0000-0000-000000000001",
+              "productName": "Phone X",
+              "unitPrice": { "amount": 2499.00, "currency": "PLN", "vatRate": "VAT_23" },
+              "selectedOptions": []
+            }
+          ]
+        }
+        """;
+
+    private static final BatchPriceQuoteRequest BATCH_REQUEST = new BatchPriceQuoteRequest(List.of(
+            new BatchPriceQuoteItemRequest(PRODUCT_ID, List.of(
+                    new SelectedOptionRequest("PROCESSOR", "I7"),
+                    new SelectedOptionRequest("RAM", "RAM_32"))),
+            new BatchPriceQuoteItemRequest(PHONE_ID, List.of())));
     private static final PriceQuoteRequest REQUEST = new PriceQuoteRequest(List.of(
             new SelectedOptionRequest("PROCESSOR", "I7"),
             new SelectedOptionRequest("RAM", "RAM_32")));
@@ -181,5 +208,90 @@ class ProductClientTest {
 
         assertThat(response.productName()).isEqualTo("Laptop Pro 15");
         verifyRequestCount(3);
+    }
+
+    private void verifyBatchRequestCount(int expected) {
+        wireMock.verify(expected, postRequestedFor(urlPathEqualTo(BATCH_PATH)));
+    }
+
+    @Test
+    @DisplayName("batch 200: quotes are mapped in order and the items are sent in the request body")
+    void getPriceQuotes_ProductsExist_ReturnsQuotesInOrder() {
+        wireMock.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(BATCH_RESPONSE)));
+
+        BatchPriceQuoteResponse response = productClient.getPriceQuotes(BATCH_REQUEST);
+
+        assertThat(response.quotes()).hasSize(2);
+        assertThat(response.quotes().getFirst().productName()).isEqualTo("Laptop Pro 15");
+        assertThat(response.quotes().get(0).unitPrice().amount()).isEqualByComparingTo("5199.00");
+        assertThat(response.quotes().get(0).selectedOptions()).hasSize(2);
+        assertThat(response.quotes().get(1).productId()).isEqualTo(PHONE_ID);
+        assertThat(response.quotes().get(1).unitPrice().amount()).isEqualByComparingTo("2499.00");
+        wireMock.verify(postRequestedFor(urlPathEqualTo(BATCH_PATH))
+                .withRequestBody(equalToJson("""
+                    { "items": [
+                        { "productId": "11111111-0000-0000-0000-000000000001",
+                          "selectedOptions": [
+                            { "groupCode": "PROCESSOR", "valueCode": "I7" },
+                            { "groupCode": "RAM", "valueCode": "RAM_32" } ] },
+                        { "productId": "22222222-0000-0000-0000-000000000001",
+                          "selectedOptions": [] } ] }
+                    """)));
+    }
+
+    @Test
+    @DisplayName("batch 404: ProductNotFoundException with the detail from product-service, no retries")
+    void getPriceQuotes_ProductNotFound_ThrowsProductNotFound() {
+        wireMock.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"detail\":\"Product not found: " + PHONE_ID + "\",\"status\":404}")));
+
+        assertThatThrownBy(() -> productClient.getPriceQuotes(BATCH_REQUEST))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessage("Product not found: " + PHONE_ID);
+        verifyBatchRequestCount(1);
+    }
+
+    @Test
+    @DisplayName("batch 400: InvalidProductSelectionException with the detail from product-service, no retries")
+    void getPriceQuotes_InvalidOptions_ThrowsInvalidSelection() {
+        wireMock.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse()
+                        .withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"detail\":\"Unknown option value NOPE\",\"status\":400}")));
+
+        assertThatThrownBy(() -> productClient.getPriceQuotes(BATCH_REQUEST))
+                .isInstanceOf(InvalidProductSelectionException.class)
+                .hasMessage("Unknown option value NOPE");
+        verifyBatchRequestCount(1);
+    }
+
+    @Test
+    @DisplayName("batch 503: three attempts, then the fallback returns ServiceUnavailableException")
+    void getPriceQuotes_ServiceUnavailable_RetriesAndFallsBack() {
+        wireMock.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse().withStatus(503)));
+
+        assertThatThrownBy(() -> productClient.getPriceQuotes(BATCH_REQUEST))
+                .isInstanceOf(ServiceUnavailableException.class);
+        verifyBatchRequestCount(3);
+    }
+
+    @Test
+    @DisplayName("batch 500: no retries, the fallback returns ServiceUnavailableException")
+    void getPriceQuotes_ServerError_FallsBackWithoutRetry() {
+        wireMock.stubFor(post(urlPathEqualTo(BATCH_PATH))
+                .willReturn(aResponse().withStatus(500)));
+
+        assertThatThrownBy(() -> productClient.getPriceQuotes(BATCH_REQUEST))
+                .isInstanceOf(ServiceUnavailableException.class);
+        verifyBatchRequestCount(1);
     }
 }

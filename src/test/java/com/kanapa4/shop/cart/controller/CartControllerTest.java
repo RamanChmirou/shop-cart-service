@@ -1,9 +1,6 @@
 package com.kanapa4.shop.cart.controller;
 
-import com.kanapa4.shop.cart.dto.AddCartItemRequest;
-import com.kanapa4.shop.cart.dto.CartItemResponse;
-import com.kanapa4.shop.cart.dto.CartResponse;
-import com.kanapa4.shop.cart.dto.UpdateQuantityRequest;
+import com.kanapa4.shop.cart.dto.*;
 import com.kanapa4.shop.cart.exception.CartItemNotFoundException;
 import com.kanapa4.shop.cart.exception.CurrencyMismatchException;
 import com.kanapa4.shop.cart.exception.InvalidProductSelectionException;
@@ -11,6 +8,8 @@ import com.kanapa4.shop.cart.exception.ProductNotFoundException;
 import com.kanapa4.shop.cart.exception.ServiceUnavailableException;
 import com.kanapa4.shop.cart.model.Cart;
 import com.kanapa4.shop.cart.model.CartStatus;
+import com.kanapa4.shop.cart.model.Price;
+import com.kanapa4.shop.cart.model.VatRate;
 import com.kanapa4.shop.cart.service.CartService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +45,7 @@ class CartControllerTest {
     private static final String CART_URL = "/carts/{userId}";
     private static final String ITEMS_URL = "/carts/{userId}/items";
     private static final String ITEM_URL = "/carts/{userId}/items/{itemId}";
+    private static final String REPRICE_URL = "/carts/{userId}/reprice";
 
     @Autowired
     private MockMvc mockMvc;
@@ -294,5 +294,63 @@ class CartControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(cartService).clear(USER_ID);
+    }
+
+    @Test
+    @DisplayName("POST reprice: 200 with the cart and the changed prices")
+    void reprice_PricesChanged_Return200WithChanges() throws Exception {
+        Price newPrice = new Price(new BigDecimal("5399.00"), "PLN", VatRate.VAT_23);
+        PriceChange change = new PriceChange(ITEM_ID, PRODUCT_ID, PRODUCT_NAME, laptopPrice(), newPrice);
+        when(cartService.reprice(USER_ID)).thenReturn(new RepriceResponse(cartResponse(), true, List.of(change)));
+
+        mockMvc.perform(post(REPRICE_URL, USER_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(true))
+                .andExpect(jsonPath("$.changes.length()").value(1))
+                .andExpect(jsonPath("$.changes[0].itemId").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.changes[0].oldUnitPrice.amount").value(5199.0))
+                .andExpect(jsonPath("$.changes[0].newUnitPrice.amount").value(5399.0))
+                .andExpect(jsonPath("$.cart.items[0].productName").value(PRODUCT_NAME));
+    }
+
+    @Test
+    @DisplayName("POST reprice: 200 and no changes")
+    void reprice_NoChanges_Return200() throws Exception {
+        when(cartService.reprice(USER_ID)).thenReturn(new RepriceResponse(cartResponse(), false, List.of()));
+
+        mockMvc.perform(post(REPRICE_URL, USER_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changed").value(false))
+                .andExpect(jsonPath("$.changes").isEmpty());
+    }
+
+    @Test
+    @DisplayName("POST reprice: a product that no longer exists gives 404")
+    void reprice_ProductNotFound_Return404() throws Exception {
+        when(cartService.reprice(USER_ID))
+                .thenThrow(new ProductNotFoundException("Product not found: " + PRODUCT_ID));
+
+        mockMvc.perform(post(REPRICE_URL, USER_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Product not found: " + PRODUCT_ID));
+    }
+
+    @Test
+    @DisplayName("POST reprice: product-service unavailable gives 503")
+    void reprice_ProductServiceUnavailable_Return503() throws Exception {
+        when(cartService.reprice(USER_ID)).thenThrow(new ServiceUnavailableException("product-service"));
+
+        mockMvc.perform(post(REPRICE_URL, USER_ID))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value("product-service is currently unavailable"));
+    }
+
+    @Test
+    @DisplayName("POST reprice: user id that is not a UUID gives 400")
+    void reprice_InvalidUserId_Return400() throws Exception {
+        mockMvc.perform(post("/carts/not-a-uuid/reprice"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(cartService);
     }
 }

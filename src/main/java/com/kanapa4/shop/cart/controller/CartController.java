@@ -2,6 +2,7 @@ package com.kanapa4.shop.cart.controller;
 
 import com.kanapa4.shop.cart.dto.AddCartItemRequest;
 import com.kanapa4.shop.cart.dto.CartResponse;
+import com.kanapa4.shop.cart.dto.RepriceResponse;
 import com.kanapa4.shop.cart.dto.UpdateQuantityRequest;
 import com.kanapa4.shop.cart.service.CartService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +45,22 @@ public class CartController {
     public CartResponse getCart(@Parameter(description = "Keycloak user id") @PathVariable UUID userId) {
         log.info("GET /carts/{}", userId);
         return cartService.getCart(userId);
+    }
+
+    @PostMapping("/reprice")
+    @Operation(summary = "Refresh prices of the cart",
+            description = "Requests current prices from product-service and updates the price snapshot "
+                    + "of every item. Returns the cart and the list of changed prices.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cart repriced"),
+            @ApiResponse(responseCode = "404", description = "A product of the cart no longer exists",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "503", description = "product-service is unavailable",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    public RepriceResponse reprice(@PathVariable UUID userId) {
+        log.info("POST /carts/{}/reprice", userId);
+        return cartService.reprice(userId);
     }
 
     @PostMapping("/items")
