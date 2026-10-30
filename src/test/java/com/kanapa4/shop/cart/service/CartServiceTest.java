@@ -409,4 +409,52 @@ class CartServiceTest {
                 .isInstanceOf(ServiceUnavailableException.class);
         assertThat(cart.getItems().getFirst().getUnitPrice()).isEqualTo(laptopPrice());
     }
+
+    @Test
+    @DisplayName("markCheckedOut: closes the cart of the user")
+    void markCheckedOut_ActiveCart_ChangesStatus() {
+        Cart cart = cartWith(laptopItem(1));
+        UUID cartId = UUID.randomUUID();
+        when(cartRepository.findById(cartId)).thenReturn(Optional.of(cart));
+
+        cartService.markCheckedOut(cart.getUserId(), cartId);
+
+        assertThat(cart.getStatus()).isEqualTo(CartStatus.CHECKED_OUT);
+    }
+
+    @Test
+    @DisplayName("markCheckedOut: a repeated event does nothing")
+    void markCheckedOut_AlreadyCheckedOut_StaysCheckedOut() {
+        Cart cart = cartWith(laptopItem(1));
+        cart.checkOut();
+        UUID cartId = UUID.randomUUID();
+        when(cartRepository.findById(cartId)).thenReturn(Optional.of(cart));
+
+        cartService.markCheckedOut(cart.getUserId(), cartId);
+
+        assertThat(cart.getStatus()).isEqualTo(CartStatus.CHECKED_OUT);
+    }
+
+    @Test
+    @DisplayName("markCheckedOut: an unknown cart is ignored")
+    void markCheckedOut_UnknownCart_DoesNothing() {
+        UUID cartId = UUID.randomUUID();
+        when(cartRepository.findById(cartId)).thenReturn(Optional.empty());
+
+        cartService.markCheckedOut(USER_ID, cartId);
+
+        verify(cartRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("markCheckedOut: a cart of another user is not touched")
+    void markCheckedOut_CartOfAnotherUser_StaysActive() {
+        Cart cart = cartWith(laptopItem(1));
+        UUID cartId = UUID.randomUUID();
+        when(cartRepository.findById(cartId)).thenReturn(Optional.of(cart));
+
+        cartService.markCheckedOut(UUID.randomUUID(), cartId);
+
+        assertThat(cart.getStatus()).isEqualTo(CartStatus.ACTIVE);
+    }
 }
