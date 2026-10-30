@@ -56,4 +56,8 @@ public class Cart {
         items.add(item);
         item.setCart(this);
     }
+
+    public void checkOut() {
+        this.status = CartStatus.CHECKED_OUT;
+    }
 }

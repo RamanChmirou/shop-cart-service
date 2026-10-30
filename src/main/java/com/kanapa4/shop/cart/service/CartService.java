@@ -83,6 +83,23 @@ public class CartService {
         return new RepriceResponse(cartMapper.toResponse(cart), !changes.isEmpty(), changes);
     }
 
+    @Transactional
+    public void markCheckedOut(UUID userId, UUID cartId) {
+        cartRepository.findById(cartId)
+                .filter(cart -> cart.getUserId().equals(userId))
+                .ifPresentOrElse(this::checkOut,
+                        () -> log.warn("Cart {} of user {} not found, nothing to check out", cartId, userId));
+    }
+
+    private void checkOut(Cart cart) {
+        if (cart.getStatus() == CartStatus.CHECKED_OUT) {
+            log.info("Cart {} is already checked out", cart.getId());
+            return;
+        }
+        cart.checkOut();
+        log.info("Cart {} of user {} checked out", cart.getId(), cart.getUserId());
+    }
+
     private PriceQuoteResponse requestQuote(AddCartItemRequest request) {
         return productClient.getPriceQuote(
                 request.productId(), new PriceQuoteRequest(request.selectedOptions()));
