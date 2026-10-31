@@ -48,6 +48,7 @@ public class CartService {
         Cart cart = getActiveCartOrNew(userId);
         checkCurrency(cart, quote.unitPrice());
         addOrMerge(cart, request, quote);
+        cart.touch();
         return cartMapper.toResponse(cartRepository.save(cart));
     }
 
@@ -56,6 +57,7 @@ public class CartService {
         log.info("Setting quantity of item {} to {} in cart of user {}", itemId, quantity, userId);
         CartItem item = findItemOrThrow(getActiveCartOrThrow(userId, itemId), userId, itemId);
         item.setQuantity(quantity);
+        item.getCart().touch();
         return cartMapper.toResponse(item.getCart());
     }
 
@@ -64,13 +66,17 @@ public class CartService {
         log.info("Removing item {} from cart of user {}", itemId, userId);
         Cart cart = getActiveCartOrThrow(userId, itemId);
         cart.getItems().remove(findItemOrThrow(cart, userId, itemId));
+        cart.touch();
     }
 
     @Transactional
     public void clear(UUID userId) {
         log.info("Clearing cart of user {}", userId);
         cartRepository.findByUserIdAndStatus(userId, CartStatus.ACTIVE)
-                .ifPresent(cart -> cart.getItems().clear());
+                .ifPresent(cart -> {
+                    cart.getItems().clear();
+                    cart.touch();
+                });
     }
 
     @Transactional

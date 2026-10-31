@@ -60,4 +60,8 @@ public class Cart {
     public void checkOut() {
         this.status = CartStatus.CHECKED_OUT;
     }
+
+    public void touch() {
+        this.updatedAt = Instant.now();
+    }
 }
