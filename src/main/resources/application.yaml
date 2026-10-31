@@ -63,3 +63,7 @@ resilience4j:
 cart:
   kafka:
     order-placed-topic: order.placed
+  cleanup:
+    inactive-after: 3d
+    batch-size: 100
+    cron: "0 0 3 * * *"

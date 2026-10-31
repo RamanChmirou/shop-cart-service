@@ -20,6 +20,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -456,5 +457,19 @@ class CartServiceTest {
         cartService.markCheckedOut(UUID.randomUUID(), cartId);
 
         assertThat(cart.getStatus()).isEqualTo(CartStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("addItem: an item added to the cart marks it as recently active")
+    void addItem_NewProduct_TouchesCart() {
+        Cart cart = cartWith(laptopItem(1));
+        cart.setUpdatedAt(Instant.parse("2020-01-01T00:00:00Z"));
+        givenActiveCart(cart);
+        givenQuote(laptopQuote());
+        givenSaveReturnsArgument();
+
+        cartService.addItem(USER_ID, addLaptopRequest(1));
+
+        assertThat(cart.getUpdatedAt()).isAfter(Instant.parse("2020-01-01T00:00:00Z"));
     }
 }
