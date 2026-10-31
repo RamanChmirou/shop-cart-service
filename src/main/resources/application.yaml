@@ -67,3 +67,13 @@ cart:
     inactive-after: 3d
     batch-size: 100
     cron: "0 0 3 * * *"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
