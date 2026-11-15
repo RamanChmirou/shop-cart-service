@@ -11,6 +11,7 @@ import com.kanapa4.shop.cart.model.VatRate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -76,9 +77,7 @@ public final class CartFixtures {
         Cart cart = new Cart();
         cart.setId(CART_ID);
         cart.setUserId(USER_ID);
-        for (CartItem item : items) {
-            cart.addItem(item);
-        }
+        Arrays.stream(items).forEach(cart::addItem);
         return cart;
     }
 }

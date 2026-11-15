@@ -11,6 +11,7 @@ import com.kanapa4.shop.cart.model.CartStatus;
 import com.kanapa4.shop.cart.model.Price;
 import com.kanapa4.shop.cart.model.VatRate;
 import com.kanapa4.shop.cart.service.CartService;
+import com.kanapa4.shop.cart.util.TestFileUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -144,10 +145,7 @@ class CartControllerTest {
     @Test
     @DisplayName("POST item: blank option code gives 400")
     void addItem_BlankOptionCode_Return400() throws Exception {
-        String body = """
-                { "productId": "11111111-0000-0000-0000-000000000001", "quantity": 1,
-                  "selectedOptions": [ { "groupCode": "", "valueCode": "I7" } ] }
-                """;
+        String body = TestFileUtils.readJson("requests/add-item-blank-option.json");
 
         mockMvc.perform(post(ITEMS_URL, USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)

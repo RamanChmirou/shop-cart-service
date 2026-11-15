@@ -1,0 +1,14 @@
+{
+  "quotes": [
+    {
+      "productId": "11111111-0000-0000-0000-000000000001",
+      "productName": "Laptop Pro 15",
+      "unitPrice": { "amount": %s, "currency": "PLN", "vatRate": "VAT_23" },
+      "selectedOptions": [
+        { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
+        { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
+      ]
+    }
+  ]
+}
+

@@ -29,7 +29,7 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class CartService {
 
-    public static final int MAX_ITEM_QUANTITY = 100;
+    public static final int MAX_ITEM_QUANTITY = CartItem.MAX_QUANTITY;
 
     private final CartRepository cartRepository;
     private final ProductClient productClient;
@@ -86,7 +86,7 @@ public class CartService {
         List<PriceQuoteResponse> quotes = requestQuotes(cart.getItems());
         List<PriceChange> changes = applyQuotes(cart.getItems(), quotes);
         log.info("Cart of user {} repriced, {} price changes", userId, changes.size());
-        return new RepriceResponse(cartMapper.toResponse(cart), !changes.isEmpty(), changes);
+        return createRepriceResponse(cart, changes);
     }
 
     @Transactional
@@ -108,7 +108,7 @@ public class CartService {
 
     private PriceQuoteResponse requestQuote(AddCartItemRequest request) {
         return productClient.getPriceQuote(
-                request.productId(), new PriceQuoteRequest(request.selectedOptions()));
+                request.productId(), createPriceQuoteRequest(request));
     }
 
     private Cart getActiveCartOrNew(UUID userId) {
@@ -182,7 +182,7 @@ public class CartService {
         List<BatchPriceQuoteItemRequest> requested = items.stream()
                 .map(cartMapper::toQuoteItem)
                 .toList();
-        return productClient.getPriceQuotes(new BatchPriceQuoteRequest(requested)).quotes();
+        return productClient.getPriceQuotes(createBatchQuoteRequest(requested)).quotes();
     }
 
     private List<PriceChange> applyQuotes(List<CartItem> items, List<PriceQuoteResponse> quotes) {
@@ -206,5 +206,17 @@ public class CartService {
         return first.amount().compareTo(second.amount()) == 0
                 && first.currency().equals(second.currency())
                 && first.vatRate() == second.vatRate();
+    }
+
+    private RepriceResponse createRepriceResponse(Cart cart, List<PriceChange> changes) {
+        return new RepriceResponse(cartMapper.toResponse(cart), !changes.isEmpty(), changes);
+    }
+
+    private PriceQuoteRequest createPriceQuoteRequest(AddCartItemRequest request) {
+        return new PriceQuoteRequest(request.selectedOptions());
+    }
+
+    private BatchPriceQuoteRequest createBatchQuoteRequest(List<BatchPriceQuoteItemRequest> requested) {
+        return new BatchPriceQuoteRequest(requested);
     }
 }
