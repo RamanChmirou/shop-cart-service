@@ -1,6 +1,7 @@
 package com.kanapa4.shop.cart.event;
 
 import com.kanapa4.shop.cart.service.CartService;
+import com.kanapa4.shop.cart.util.TestFileUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -22,10 +23,8 @@ class OrderPlacedListenerTest {
         OrderPlacedListener listener = new OrderPlacedListener(cartService, JsonMapper.builder().build());
         UUID userId = UUID.randomUUID();
         UUID cartId = UUID.randomUUID();
-        String payload = """
-                {"eventId":"%s","orderId":"%s","orderNumber":"ORD-1","userId":"%s","cartId":"%s",
-                 "grandTotal":215.00,"currency":"PLN","occurredAt":"2026-10-18T12:00:00Z"}
-                """.formatted(UUID.randomUUID(), UUID.randomUUID(), userId, cartId);
+        String payloadTemplate = TestFileUtils.readJson("events/order-placed-template.json");
+        String payload = payloadTemplate.formatted(UUID.randomUUID(), UUID.randomUUID(), userId, cartId);
 
         listener.onOrderPlaced(payload);
 

@@ -3,7 +3,9 @@ package com.kanapa4.shop.cart.exception;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Getter
 public abstract class CartException extends RuntimeException {
@@ -16,13 +18,9 @@ public abstract class CartException extends RuntimeException {
     }
 
     public static Optional<CartException> findIn(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof CartException cartException) {
-                return Optional.of(cartException);
-            }
-            current = current.getCause();
-        }
-        return Optional.empty();
+        return Stream.iterate(throwable, Objects::nonNull, Throwable::getCause)
+                .filter(CartException.class::isInstance)
+                .map(CartException.class::cast)
+                .findFirst();
     }
 }

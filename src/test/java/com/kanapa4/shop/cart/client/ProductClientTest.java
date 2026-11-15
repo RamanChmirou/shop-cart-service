@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.kanapa4.shop.cart.TestcontainersConfiguration;
+import com.kanapa4.shop.cart.util.TestFileUtils;
 import com.kanapa4.shop.cart.dto.*;
 import com.kanapa4.shop.cart.exception.InvalidProductSelectionException;
 import com.kanapa4.shop.cart.exception.ProductNotFoundException;
@@ -36,41 +37,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProductClientTest {
 
     private static final String QUOTE_PATH = "/products/" + PRODUCT_ID + "/price-quote";
-
-    private static final String QUOTE_RESPONSE = """
-            {
-              "productId": "11111111-0000-0000-0000-000000000001",
-              "productName": "Laptop Pro 15",
-              "unitPrice": { "amount": 5199.00, "currency": "PLN", "vatRate": "VAT_23" },
-              "selectedOptions": [
-                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
-                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
-              ]
-            }
-            """;
+    private static final String QUOTE_RESPONSE = TestFileUtils.readJson("stubs/price-quote-laptop.json");
     private static final String BATCH_PATH = "/products/price-quotes";
-
-    private static final String BATCH_RESPONSE = """
-        {
-          "quotes": [
-            {
-              "productId": "11111111-0000-0000-0000-000000000001",
-              "productName": "Laptop Pro 15",
-              "unitPrice": { "amount": 5199.00, "currency": "PLN", "vatRate": "VAT_23" },
-              "selectedOptions": [
-                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
-                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
-              ]
-            },
-            {
-              "productId": "22222222-0000-0000-0000-000000000001",
-              "productName": "Phone X",
-              "unitPrice": { "amount": 2499.00, "currency": "PLN", "vatRate": "VAT_23" },
-              "selectedOptions": []
-            }
-          ]
-        }
-        """;
+    private static final String BATCH_RESPONSE = TestFileUtils.readJson("stubs/batch-quotes.json");
+    private static final String QUOTE_REQUEST_JSON = TestFileUtils.readJson("requests/price-quote-request.json");
+    private static final String BATCH_REQUEST_JSON = TestFileUtils.readJson("requests/batch-price-quotes-request.json");
 
     private static final BatchPriceQuoteRequest BATCH_REQUEST = new BatchPriceQuoteRequest(List.of(
             new BatchPriceQuoteItemRequest(PRODUCT_ID, List.of(
@@ -113,11 +84,7 @@ class ProductClientTest {
         assertThat(response.unitPrice().currency()).isEqualTo("PLN");
         assertThat(response.selectedOptions()).hasSize(2);
         wireMock.verify(postRequestedFor(urlPathEqualTo(QUOTE_PATH))
-                .withRequestBody(equalToJson("""
-                        { "selectedOptions": [
-                            { "groupCode": "PROCESSOR", "valueCode": "I7" },
-                            { "groupCode": "RAM", "valueCode": "RAM_32" } ] }
-                        """)));
+                .withRequestBody(equalToJson(QUOTE_REQUEST_JSON)));
     }
 
     @Test
@@ -232,15 +199,7 @@ class ProductClientTest {
         assertThat(response.quotes().get(1).productId()).isEqualTo(PHONE_ID);
         assertThat(response.quotes().get(1).unitPrice().amount()).isEqualByComparingTo("2499.00");
         wireMock.verify(postRequestedFor(urlPathEqualTo(BATCH_PATH))
-                .withRequestBody(equalToJson("""
-                    { "items": [
-                        { "productId": "11111111-0000-0000-0000-000000000001",
-                          "selectedOptions": [
-                            { "groupCode": "PROCESSOR", "valueCode": "I7" },
-                            { "groupCode": "RAM", "valueCode": "RAM_32" } ] },
-                        { "productId": "22222222-0000-0000-0000-000000000001",
-                          "selectedOptions": [] } ] }
-                    """)));
+                .withRequestBody(equalToJson(BATCH_REQUEST_JSON)));
     }
 
     @Test

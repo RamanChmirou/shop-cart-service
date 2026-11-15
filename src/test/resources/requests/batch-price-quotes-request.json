@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "productId": "11111111-0000-0000-0000-000000000001",
+      "selectedOptions": [
+        { "groupCode": "PROCESSOR", "valueCode": "I7" },
+        { "groupCode": "RAM", "valueCode": "RAM_32" }
+      ]
+    },
+    {
+      "productId": "22222222-0000-0000-0000-000000000001",
+      "selectedOptions": []
+    }
+  ]
+}
+

@@ -16,12 +16,17 @@ public class CartCleanupJob {
 
     @Scheduled(cron = "${cart.cleanup.cron}")
     public void deleteInactiveCarts() {
+        int total = purgeInactiveCarts();
+        log.info("Cart cleanup finished, {} carts deleted", total);
+    }
+
+    private int purgeInactiveCarts() {
         int total = 0;
         int deleted;
         do {
             deleted = cleanupService.deleteInactiveCarts(properties.inactiveAfter(), properties.batchSize());
             total += deleted;
         } while (deleted == properties.batchSize());
-        log.info("Cart cleanup finished, {} carts deleted", total);
+        return total;
     }
 }

@@ -1,6 +1,7 @@
 package com.kanapa4.shop.cart;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.kanapa4.shop.cart.util.TestFileUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,45 +42,10 @@ class CartApiIntegrationTest {
     private static final String PRODUCT_ID = "11111111-0000-0000-0000-000000000001";
     private static final String QUOTE_PATH = "/products/" + PRODUCT_ID + "/price-quote";
 
-    private static final String QUOTE_RESPONSE = """
-            {
-              "productId": "11111111-0000-0000-0000-000000000001",
-              "productName": "Laptop Pro 15",
-              "unitPrice": { "amount": 5199.00, "currency": "PLN", "vatRate": "VAT_23" },
-              "selectedOptions": [
-                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
-                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
-              ]
-            }
-            """;
-
-    private static final String ADD_LAPTOP_BODY = """
-            {
-              "productId": "11111111-0000-0000-0000-000000000001",
-              "quantity": %d,
-              "selectedOptions": [
-                { "groupCode": "PROCESSOR", "valueCode": "I7" },
-                { "groupCode": "RAM", "valueCode": "RAM_32" }
-              ]
-            }
-            """;
+    private static final String QUOTE_RESPONSE = TestFileUtils.readJson("stubs/price-quote-laptop.json");
+    private static final String ADD_LAPTOP_BODY = TestFileUtils.readJson("requests/add-cart-item-laptop-template.json");
     private static final String BATCH_PATH = "/products/price-quotes";
-
-    private static final String BATCH_RESPONSE = """
-        {
-          "quotes": [
-            {
-              "productId": "11111111-0000-0000-0000-000000000001",
-              "productName": "Laptop Pro 15",
-              "unitPrice": { "amount": %s, "currency": "PLN", "vatRate": "VAT_23" },
-              "selectedOptions": [
-                { "groupCode": "PROCESSOR", "valueCode": "I7", "valueLabel": "Intel Core i7", "priceDelta": 800.00 },
-                { "groupCode": "RAM", "valueCode": "RAM_32", "valueLabel": "32 GB", "priceDelta": 400.00 }
-              ]
-            }
-          ]
-        }
-        """;
+    private static final String BATCH_RESPONSE = TestFileUtils.readJson("stubs/batch-quote-single-template.json");
 
     @Autowired
     private MockMvc mockMvc;

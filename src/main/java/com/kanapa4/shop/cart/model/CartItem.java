@@ -18,6 +18,8 @@ import java.util.UUID;
 @NoArgsConstructor
 public class CartItem {
 
+    public static final int MAX_QUANTITY = 100;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
