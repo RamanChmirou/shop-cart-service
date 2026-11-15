@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProperty scope="context" name="service" source="spring.application.name" defaultValue="unknown"/>
+
+    <springProfile name="docker">
+        <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+            <destination>${LOGSTASH_DESTINATION:-logstash:5000}</destination>
+            <reconnectionDelay>5 seconds</reconnectionDelay>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <customFields>{"service":"${service}"}</customFields>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <springProfile name="docker">
+            <appender-ref ref="LOGSTASH"/>
+        </springProfile>
+    </root>
+</configuration>

@@ -1,0 +1,11 @@
+{
+  "eventId": "%s",
+  "orderId": "%s",
+  "orderNumber": "ORD-1",
+  "userId": "%s",
+  "cartId": "%s",
+  "grandTotal": 215.00,
+  "currency": "PLN",
+  "occurredAt": "2026-10-18T12:00:00Z"
+}
+

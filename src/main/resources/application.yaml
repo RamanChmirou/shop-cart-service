@@ -1,3 +1,79 @@
+server:
+  port: 8082
+
 spring:
   application:
-    name: cart
+    name: cart-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cart_db
+    username: shop
+    password: shop
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+    circuitbreaker:
+      resilience4j:
+        disable-time-limiter: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: cart-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+clients:
+  product-service:
+    url: http://localhost:8081
+
+logging:
+  level:
+    root: INFO
+    com.kanapa4.shop.cart: DEBUG
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        ignore-exceptions:
+          - com.kanapa4.shop.cart.exception.CartException
+cart:
+  kafka:
+    order-placed-topic: order.placed
+  cleanup:
+    inactive-after: 3d
+    batch-size: 100
+    cron: "0 0 3 * * *"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
